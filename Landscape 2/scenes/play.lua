@@ -53,14 +53,12 @@ local coin_count = 6
 local coin_size = 10
 local coin_speed = 2
 
-
--- Player physics properties 
-local player_properties = {friction=0, denisty=10, bounce=0.3}
-local player_linear_damping = 0.5
-
 -- Adjust this number along with the density above, to controller how the player object
 -- reacts to taps. 
 local tap_nudge = 0.2
+-- Player physics properties 
+local player_properties = {friction=0, denisty=10, bounce=0.3 }
+local player_linear_damping = 0.5
 
 -- To control the motion of the player object play with the values for 
 -- density, player_linear_damping, and tap_nudge. 
@@ -96,9 +94,9 @@ local background
 local midground
 local foreground
 
-
 local clouds
 
+local deadly_timer
 
 
 
@@ -113,37 +111,6 @@ local clouds
 -- Some functions to run the game
 --
 -- ============================================================
-
----------------------------------------------------------------
--- Enter frame event. Here we'll animate objects
----------------------------------------------------------------
-
-local function on_frame( event )
-	-- Move the platforms
-	for i = 1, #platform_array do 
-		local platform = platform_array[i]
-		platform.x = platform.x - platform_speed
-		if platform.x < platform_left then 
-			platform.x = platform.x + platform_travel
-			platform.y = display.contentHeight - math.random( 0, platform_height / 2)
-		end 
-	end 
-	
-	-- Move the coins
-	for i = 1, #coin_array do 
-		local coin = coin_array[i]
-		coin.x = coin.x - coin_speed
-		if coin.x < ( -coin_size * 2 ) then 
-			coin.x = math.random( display.contentWidth, display.contentWidth * 2 )
-			coin.y = math.random( 100, 300 )
-		end
-	end 
-	
-	-- Check if player has fallen below the bottom of the screen
-	if player.y > display.contentHeight then 
-		storyboard.gotoScene( "scenes.splash", { effect="slideRight" } )
-	end 
-end 
 
 
 
@@ -160,6 +127,8 @@ local function on_touch( event )
 		player:setFrame( 1 )
 	end 
 end 	
+
+
 
 
 
@@ -241,9 +210,48 @@ local function make_coin()
 	coin:setFillColor( 1, 1, 1, 0.2 )
 	coin:setStrokeColor( 1, 1, 1, 0.6 )
 	coin.strokeWidth = 6
-	physics.addBody( coin, "kinematic", {isSensor=true} )
+	physics.addBody( coin, "kinematic", {isSensor=true, radius=15} )
 	coin.isCoin = true
 	return coin
+end 
+
+
+
+
+
+
+
+
+
+
+-------------------------------------------------------------------------
+-- make deadly object
+-------------------------------------------------------------------------
+local function make_deadly_object()
+	local obj = display.newImageRect( "images/spiky-ball-of-doom.png", 125/2, 131/2 )
+	scene.view:insert( obj )
+	physics.addBody( obj, "kinematic", {isSensor=true, radius=30} )
+	obj.x = display.contentWidth + 60
+	obj.y = math.random( 30, display.contentHeight / 2 )
+	obj.isDeadly = true
+	transition.to( obj, {x=-60, time=4000, onComplete=function(obj) 
+		display.remove( obj )
+	end } )
+end 
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------
+-- game_over
+---------------------------------------------------------------------------
+local function game_over()
+	storyboard.gotoScene( "scenes.splash", { effect="slideRight" } )
 end 
 
 
@@ -255,16 +263,56 @@ end
 -- Check for collisions
 -------------------------------------------------------------------------
 local function on_collision( event )
-	if event.phase == "began" and event.other.isCoin then 
+	if event.phase == "began" then
+	 	if event.other.isCoin then 
+			local explosion = poof.make_poof()
+			midground:insert( explosion )
+			explosion.x = event.other.x
+			explosion.y = event.other.y
 		
-		local explosion = poof.make_poof()
-		midground:insert( explosion )
-		explosion.x = event.other.x
-		explosion.y = event.other.y
-		
-		timer.performWithDelay( 1, function() 
-			reset_coin( event.other ) 
-		end  )
+			timer.performWithDelay( 1, function() 
+				reset_coin( event.other ) 
+			end  )
+		elseif event.other.isDeadly then
+			game_over()
+		end
+	end 
+end 
+
+
+
+
+
+
+
+---------------------------------------------------------------
+-- Enter frame event. Here we'll animate objects
+---------------------------------------------------------------
+
+local function on_frame( event )
+	-- Move the platforms
+	for i = 1, #platform_array do 
+		local platform = platform_array[i]
+		platform.x = platform.x - platform_speed
+		if platform.x < platform_left then 
+			platform.x = platform.x + platform_travel
+			platform.y = display.contentHeight - math.random( 0, platform_height / 2)
+		end 
+	end 
+	
+	-- Move the coins
+	for i = 1, #coin_array do 
+		local coin = coin_array[i]
+		coin.x = coin.x - coin_speed
+		if coin.x < ( -coin_size * 2 ) then 
+			coin.x = math.random( display.contentWidth, display.contentWidth * 2 )
+			coin.y = math.random( 100, 300 )
+		end
+	end 
+	
+	-- Check if player has fallen below the bottom of the screen
+	if player.y > display.contentHeight then 
+		game_over()
 	end 
 end 
 
@@ -374,6 +422,8 @@ end
 function scene:enterScene( event )
 	local group = self.view
 	clouds.start()
+	
+	deadly_timer = timer.performWithDelay( 3000, make_deadly_object, 0 )
 end
 
 
@@ -384,6 +434,8 @@ end
 function scene:exitScene( event )
 	local group = self.view
 	clouds.stop()
+	
+	timer.cancel( deadly_timer )
 end
 
 -- Called when scene HAS moved off screen:
